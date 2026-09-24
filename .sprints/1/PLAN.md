@@ -213,3 +213,36 @@ duplicating them):
    on the dashboard, wired to a specific instance's live view.
 4. Revisit WebRTC only if screencast latency is measured to be a real
    problem for the steering use case.
+
+---
+
+## Related research: agent-facing MCP API design
+
+`.sprints/1/research/modern-web-agent-patterns.md` — a survey of current vs.
+bleeding-edge patterns for browser-automation MCPs, done independently of
+the three workstreams above but relevant to where this fork's *tool surface*
+itself should head next. Brief pointers, not a commitment to a workstream
+yet:
+
+- **Current mainstream** (Playwright MCP, Chrome DevTools MCP, Vercel's
+  `agent-browser`): accessibility-tree/semantic snapshots with stable opaque
+  refs instead of raw DOM or screenshots, interactive-only/scoped
+  observations, observation **deltas** (resend only what changed since the
+  last revision), batched multi-step `act()` calls so the LLM isn't round-
+  tripped per keystroke/click, and selector/action **caching** so a repeat
+  run skips inference entirely.
+- **Bleeding edge**: **WebMCP** (a site exposes typed tools like
+  `searchFlights(...)` directly, bypassing DOM grounding altogether when
+  supported) and **discover → compile → replay** architectures (an
+  exploratory trajectory becomes a validated, replayable recipe; only a
+  postcondition mismatch falls back to the LLM) — both still experimental
+  but explicitly what Chrome DevTools MCP and Stagehand are building toward.
+- **Where this fork sits today**: closer to the "CDP-oriented" shape the
+  research calls out as the thing to move away from — 94 largely
+  one-primitive tools (`click_element`, `type_text`, `query_elements`, …)
+  rather than a small task-oriented surface (`observe`/`act`/`extract`) with
+  deltas and batching. Not a criticism to act on immediately — upstream's
+  own design goals (a shared fleet-scale backend, exhaustive CDP access) are
+  a different axis from this research's — but worth flagging as a candidate
+  **workstream 4** if this fork's direction moves toward agent-driven use
+  rather than tool-call-by-tool-call automation.
