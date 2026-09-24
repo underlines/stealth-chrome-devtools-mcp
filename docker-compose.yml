@@ -1,0 +1,50 @@
+# One containerized backend for stealth-chrome-devtools-mcp, reachable over
+# HTTP for MCP clients that speak HTTP (streamable) transport.
+#
+# Works identically on Docker Desktop for Windows and native Linux Docker:
+# state goes to named volumes, never host paths. The container is Linux
+# regardless of the host.
+#
+# Configuration: copy .env.example to .env and uncomment what you want to
+# override. The file is optional (the service starts with built-in defaults).
+
+services:
+  stealth-chrome-devtools-mcp:
+    build: .
+    image: stealth-chrome-devtools-mcp:local
+    container_name: stealth-chrome-devtools-mcp
+    restart: unless-stopped
+
+    # The server is unauthenticated and drives logged-in browser profiles, so
+    # publish on the host's loopback only. To reach it from another machine,
+    # change to "8000:8000" and understand that you are exposing those
+    # profiles to everything that can reach the port.
+    ports:
+      - "127.0.0.1:8000:8000"
+
+    # Chrome needs more than the 64 MiB default /dev/shm. The server also
+    # detects Docker and adds --disable-dev-shm-usage itself; this covers the
+    # case where it does not.
+    shm_size: 2gb
+
+    # Give Chrome's graceful closes (which commit login sessions to disk)
+    # room to finish on `docker compose stop` / `down` before SIGKILL.
+    stop_grace_period: 30s
+
+    # Reap orphaned Chrome children cleanly.
+    init: true
+
+    env_file:
+      - path: .env
+        required: false
+
+    volumes:
+      # Server registry, logs, lock files, config (~/.stealth-mcp/.env).
+      - stealth_mcp_state:/home/stealth/.stealth-mcp
+      # Browser session root: the `default` profile, its seed, and per-session
+      # clones. This is where logins persist.
+      - stealth_mcp_sessions:/home/stealth/.stealth-mcp-browser-sessions
+
+volumes:
+  stealth_mcp_state:
+  stealth_mcp_sessions:

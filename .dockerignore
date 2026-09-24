@@ -1,0 +1,49 @@
+# Keep the build context to what the image build actually needs:
+# pyproject.toml, uv.lock, README.md, src/.
+
+# Version control and CI
+.git
+.github
+.husky
+.gitignore
+
+# Local docs (the wheel needs README.md only)
+CLAUDE.md
+DESIGN.md
+RUNBOOK.md
+CONTRIBUTING.md
+RELEASE_CONTRACT.md
+CHANGELOG.md
+
+# Repo tooling not needed at runtime
+audit/
+tests/
+tools/
+agent-setup/
+examples/
+assets/
+.playwright-mcp/
+.mcp.json*
+mcp.json
+package.json
+package-lock.json
+node_modules/
+
+# Python build/test artifacts
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+.coverage.*
+htmlcov/
+dist/
+build/
+
+# Secrets and local env files — never bake these into an image
+.env
+.env.*

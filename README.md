@@ -137,6 +137,44 @@ report contains and how to turn it off.
 }
 ```
 
+## Docker
+
+One containerized backend over HTTP transport, identical on Docker Desktop for
+Windows and native Linux Docker (the container itself is always Linux):
+
+```bash
+cp .env.example .env        # optional — uncomment what you want to override
+docker compose up -d --build
+```
+
+Point an HTTP-transport MCP client at the endpoint
+(`http://localhost:8000/mcp`); for Claude Code:
+
+```bash
+claude mcp add --transport http stealth-chrome-devtools-mcp http://localhost:8000/mcp
+```
+
+State persists across restarts in two named volumes: `stealth_mcp_state`
+(mounted at `~/.stealth-mcp` — server registry, logs, lock files, config) and
+`stealth_mcp_sessions` (the browser session root — the `default` profile, its
+seed, and per-session clones; this is where logins persist).
+
+- **Headless only.** A container has no display; spawn browsers with
+  `headless=true`. The server detects Docker and adds `--no-sandbox` and
+  friends itself — no extra launch flags needed.
+- The image wraps `/usr/bin/google-chrome` in a shim that drops the
+  `--single-process` flag the server auto-adds inside containers: Chrome 154
+  exits on launch with it (measured), so every spawn fails without the shim.
+  If a release stops adding that flag, delete the shim from the Dockerfile.
+- The image is linux/amd64 (Google Chrome Stable inside; `shm_size: 2gb` covers
+  Chrome's `/dev/shm` needs).
+- Logs and teardown: `docker compose logs -f`, `docker compose down`. Add `-v`
+  to `down` to also delete the volumes — that erases every stored login.
+- The published port binds the host's loopback (`127.0.0.1:8000:8000`) because
+  the HTTP server is unauthenticated and drives logged-in profiles. To reach it
+  from another machine, open the mapping deliberately (`8000:8000`) and protect
+  it yourself. To change the port, set `PORT` in `.env` and update the mapping.
+
 ## How It Works
 
 ### Built for fleets: 50+ Claude Code sessions, one backend
