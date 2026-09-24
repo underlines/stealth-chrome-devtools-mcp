@@ -376,6 +376,7 @@ class BrowserManager:
                 "width": options.viewport_width,
                 "height": options.viewport_height,
             },
+            humanize=options.humanize,
         )
 
     def _resolve_proxy(

@@ -5,11 +5,12 @@ import time
 from pathlib import Path
 from typing import Any
 
-from nodriver import Tab
+from nodriver import Tab, cdp
 
 from stealth_chrome_devtools_mcp.embedded import (
     click_target,
     control_state,
+    humanize,
     script_evaluation,
     scroll_position,
     text_entry,
@@ -23,6 +24,52 @@ from stealth_chrome_devtools_mcp.embedded.element_resolution import (
 )
 from stealth_chrome_devtools_mcp.embedded.models import ElementInfo
 from stealth_chrome_devtools_mcp.embedded.tool_errors import ToolError
+
+#: Module-level so it is never shadowed by a ``humanize: bool`` parameter —
+#: every function taking that flag calls THIS, never references the
+#: ``humanize`` MODULE itself in its own scope.
+_MOUSE_LEFT = cdp.input_.MouseButton("left")
+
+
+async def _humanized_click(tab: Tab, target: tuple[float, float]) -> None:
+    """Move the mouse along a natural path to *target*, then click it.
+
+    Dispatches the same ``mousePressed``/``mouseReleased`` pair
+    ``Element.mouse_click`` -> ``Tab.mouse_click`` does, but precedes it with
+    intermediate ``mouseMoved`` events along a curved path from the pointer's
+    last known position (fork feature; see ``humanize.natural_mouse_path``),
+    and holds the button down for a sampled dwell instead of releasing
+    instantly (``humanize.sample_click_dwell``).
+    """
+    fallback = (max(0.0, target[0] - 250), max(0.0, target[1] - 150))
+    start = humanize.last_pointer(tab, fallback=fallback)
+    for x, y, delay in humanize.natural_mouse_path(start, target):
+        if delay:
+            await asyncio.sleep(delay)
+        await tab.send(cdp.input_.dispatch_mouse_event("mouseMoved", x=x, y=y))
+    humanize.remember_pointer(tab, target)
+
+    await tab.send(
+        cdp.input_.dispatch_mouse_event(
+            "mousePressed",
+            x=target[0],
+            y=target[1],
+            button=_MOUSE_LEFT,
+            buttons=1,
+            click_count=1,
+        )
+    )
+    await asyncio.sleep(humanize.sample_click_dwell())
+    await tab.send(
+        cdp.input_.dispatch_mouse_event(
+            "mouseReleased",
+            x=target[0],
+            y=target[1],
+            button=_MOUSE_LEFT,
+            buttons=1,
+            click_count=1,
+        )
+    )
 
 
 class DOMHandler:
@@ -227,6 +274,7 @@ class DOMHandler:
         selector: str,
         text_match: str | None = None,
         timeout: int = 10000,  # noqa: ASYNC109  plan_M7
+        humanize: bool = False,
     ) -> dict[str, Any]:
         """
         Click an element with smart retry logic.
@@ -245,6 +293,11 @@ class DOMHandler:
             selector (str): CSS selector for the element.
             text_match (Optional[str]): Match element by text content.
             timeout (int): Timeout in milliseconds.
+            humanize (bool): Fork feature. When True and the element has a
+                real click point, move along a curved path (``_humanized_click``)
+                instead of an instant coordinate click. Falls through to the
+                ordinary path when there is no point to move toward (an
+                unrendered target) — see ``click_target.aim``.
 
         Returns:
             Dict[str, Any]: where the click went — see ``click_target.record``.
@@ -268,9 +321,15 @@ class DOMHandler:
             await asyncio.sleep(0.5)
 
             aim = await click_target.aim(element, selector)
+            point = aim.get("point")
 
             try:
-                await element.mouse_click()
+                if humanize and isinstance(point, dict):
+                    await _humanized_click(
+                        tab, (float(point["x"]), float(point["y"]))
+                    )
+                else:
+                    await element.mouse_click()
                 dispatch = click_target.COORDINATE
             except Exception as e:
                 debug_logger.log_debug("dom_handler", "click_element", str(e))
@@ -358,6 +417,7 @@ class DOMHandler:
         delay_ms: int = 50,
         parse_newlines: bool = False,
         shift_enter: bool = False,
+        humanize: bool = False,
     ) -> bool:
         """
         Type text with human-like delays and optional newline parsing.
@@ -380,6 +440,10 @@ class DOMHandler:
             parse_newlines (bool): If True, parse \n as Enter key presses.
             shift_enter (bool): If True, use Shift+Enter instead of Enter
                 (for chat apps).
+            humanize (bool): Fork feature. When True, ``delay_ms`` is ignored
+                and each character's pause is sampled from the recorded-trace
+                quantile tables in ``humanize.py`` instead of being one fixed
+                constant \u2014 see ``text_entry._humanized_delay``.
 
         Returns:
             bool: True \u2014 the characters were typed AND the page took them.
@@ -410,7 +474,9 @@ class DOMHandler:
             for index, line in enumerate(lines):
                 if line:
                     before = await text_entry.entered_text(element, selector)
-                    await text_entry.type_characters(tab, element, line, delay)
+                    await text_entry.type_characters(
+                        tab, element, line, delay, humanize=humanize
+                    )
                     after = await text_entry.entered_text(element, selector)
                     text_entry.verify_received(selector, line, before, after)
                 if index < len(lines) - 1:

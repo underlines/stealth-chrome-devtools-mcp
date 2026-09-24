@@ -62,6 +62,7 @@ from typing import TYPE_CHECKING
 
 from nodriver import cdp
 
+from stealth_chrome_devtools_mcp.embedded import humanize
 from stealth_chrome_devtools_mcp.embedded.tool_errors import ToolError
 
 if TYPE_CHECKING:
@@ -168,20 +169,42 @@ async def press_enter(tab: Tab, *, shift: bool = False) -> None:
     )
 
 
-async def type_characters(tab: Tab, element: Element, text: str, delay: float) -> None:
+def _humanized_delay(char: str) -> float:
+    """Seconds before the next character, sampled from the recorded trace.
+
+    Fork feature (``humanize.py``). Only two of its four key classes apply to
+    plain character typing — ``space`` and ``printable`` — the other two
+    (``modifier``, ``delete``) belong to :func:`press_enter` and a backspace
+    correction, neither of which this loop performs.
+    """
+    key_class = "space" if char == " " else "printable"
+    return humanize.sample_keystroke_delay(key_class)
+
+
+async def type_characters(
+    tab: Tab, element: Element, text: str, delay: float, *, humanize: bool = False
+) -> None:
     """Type *text* one character at a time, full key lifecycle per character.
 
     The element is re-focused before each character, as the shipped path was:
     a page that moves focus mid-typing (an autocomplete flyout, a re-render)
     would otherwise send the rest of the string somewhere else.
+
+    ``humanize`` (fork feature): when True, *delay* is ignored and the
+    inter-keystroke pause is drawn per character from
+    :func:`_humanized_delay` instead of being one fixed constant. Named the
+    same as ``spawn_browser``'s flag for API consistency; this function never
+    references the ``humanize`` MODULE itself, only ``_humanized_delay``, so
+    the parameter shadowing it here is harmless.
     """
     for char in text:
         await element.focus()
         await press_key(
             tab, key=char, text=char, virtual_key_code=_virtual_key_code(char)
         )
-        if delay:
-            await asyncio.sleep(delay)
+        wait = _humanized_delay(char) if humanize else delay
+        if wait:
+            await asyncio.sleep(wait)
 
 
 #: The programmatic clear — THE one spelling of it (F-876). ``type_text`` and

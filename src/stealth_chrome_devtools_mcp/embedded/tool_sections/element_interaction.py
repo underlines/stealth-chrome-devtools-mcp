@@ -43,6 +43,20 @@ from stealth_chrome_devtools_mcp.embedded.tool_errors import ToolError, _require
 SECTION = "element-interaction"
 
 
+async def _instance_humanize(instance_id: str) -> bool:
+    """The ``humanize`` flag *instance_id* was spawned with, or False.
+
+    Fork feature (embedded/humanize.py). Set once at ``spawn_browser`` time
+    and read here by ``click_element``/``type_text`` rather than accepted as
+    a per-call argument, so one instance's humanization mode cannot drift
+    call to call. A miss (the instance vanished between ``_require_tab`` and
+    this read) answers False rather than raising — that race is
+    ``_require_tab``'s to report, not this flag's.
+    """
+    data = await rt.browser_manager.get_instance(instance_id)
+    return bool(data["instance"].humanize) if data else False
+
+
 async def query_elements(
     instance_id: str,
     selector: str,
@@ -124,11 +138,16 @@ async def click_element(
             when the click reached the target, else one of "not-rendered",
             "off-viewport", "zero-size", "not-visible", "pointer-events-none",
             "covered", "disabled". Whether the PAGE then reacted is not claimed.
+
+    Fork feature: if this instance was spawned with ``humanize=True``, the
+    mouse moves along a curved path before clicking instead of teleporting
+    to the point — see ``spawn_browser``'s ``humanize`` argument.
     """
     timeout = rt._clamp_timeout(timeout, default=10_000)
     tab = await _require_tab(rt.browser_manager, instance_id)
+    humanize = await _instance_humanize(instance_id)
     return await rt._with_cdp_timeout(
-        rt.dom_handler.click_element(tab, selector, text_match, timeout),
+        rt.dom_handler.click_element(tab, selector, text_match, timeout, humanize),
         instance_id=instance_id,
     )
 
@@ -189,9 +208,14 @@ async def type_text(
         selector (str): CSS selector or XPath.
         text (str): Text to type.
         clear_first (bool): Clear field before typing.
-        delay_ms (int): Delay between keystrokes in milliseconds.
+        delay_ms (int): Delay between keystrokes in milliseconds. Ignored if
+            this instance was spawned with ``humanize=True`` — see below.
         parse_newlines (bool): If True, parse \n as Enter key presses.
         shift_enter (bool): If True, use Shift+Enter instead of Enter (for chat apps).
+
+    Fork feature: if this instance was spawned with ``humanize=True``, each
+    keystroke's pause is sampled from a recorded-trace quantile table instead
+    of the fixed ``delay_ms`` — see ``spawn_browser``'s ``humanize`` argument.
 
     Returns:
         bool: True — the characters were typed AND the field's own read-back
@@ -202,9 +226,17 @@ async def type_text(
     if isinstance(delay_ms, str):
         delay_ms = int(delay_ms)
     tab = await _require_tab(rt.browser_manager, instance_id)
+    humanize = await _instance_humanize(instance_id)
     return await rt._with_cdp_timeout(
         rt.dom_handler.type_text(
-            tab, selector, text, clear_first, delay_ms, parse_newlines, shift_enter
+            tab,
+            selector,
+            text,
+            clear_first,
+            delay_ms,
+            parse_newlines,
+            shift_enter,
+            humanize,
         ),
         timeout=60,
         instance_id=instance_id,

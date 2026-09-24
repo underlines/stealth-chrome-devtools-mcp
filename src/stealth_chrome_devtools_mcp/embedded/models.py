@@ -46,6 +46,14 @@ class BrowserInstance(BaseModel):
     viewport: dict[str, int] = Field(
         default_factory=lambda: {"width": 1920, "height": 1080}
     )
+    humanize: bool = Field(
+        default=False,
+        description=(
+            "Fork feature: click_element and type_text move/pace like the "
+            "recorded human trace (embedded/humanize.py) instead of an "
+            "instant click and a fixed per-character delay."
+        ),
+    )
 
     def update_activity(self):
         """Update last activity timestamp."""
@@ -142,6 +150,14 @@ class BrowserOptions(BaseModel):
             "Internal: profile is a disposable copy of the default session and "
             "is deleted when the browser closes. Set by the server from the "
             "resolved profile role, never by callers."
+        ),
+    )
+    humanize: bool = Field(
+        default=False,
+        description=(
+            "Fork feature: click_element and type_text move/pace like the "
+            "recorded human trace (embedded/humanize.py) instead of an "
+            "instant click and a fixed per-character delay."
         ),
     )
 

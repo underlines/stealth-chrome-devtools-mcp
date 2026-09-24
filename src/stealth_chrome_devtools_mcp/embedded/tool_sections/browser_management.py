@@ -82,6 +82,7 @@ async def spawn_browser(
     seed_from: str | None = None,
     user_data_dir: str | None = None,
     sandbox: Any | None = None,
+    humanize: bool = False,
 ) -> dict[str, Any]:
     """
     Spawn a new browser instance.
@@ -217,6 +218,12 @@ async def spawn_browser(
             both with DIFFERENT values is an error rather than a precedence you
             cannot see. Everything said about ``session`` above applies to it.
         sandbox (Optional[Any]): Enable browser sandbox. Accepts bool, string ('true'/'false'), int (1/0), or None for auto-detect.
+        humanize (bool): Fork feature (embedded/humanize.py). When True,
+            every click_element and type_text call on THIS instance moves the
+            mouse along a curved path and paces keystrokes from quantile
+            tables sampled from a real recorded human session, instead of an
+            instant coordinate click and a fixed per-character delay. Off by
+            default; set at spawn time and applies to the whole instance.
 
     Network interception captures request/response metadata by default, but
     response *bodies* are NOT stored unless capture is enabled — via
@@ -378,6 +385,7 @@ async def spawn_browser(
                 user_data_dir=selected_user_data_dir,
                 sandbox=sandbox,
                 auto_clone=(profile_selection.get("profile_role") == "clone"),
+                humanize=humanize,
             )
             try:
                 instance = await rt.browser_manager.spawn_browser(options)
